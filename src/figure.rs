@@ -3,7 +3,8 @@ use std::vec::Vec;
 use crate::transformations::*;
 use crate::point::Point;
 use crate::color::Color;
-use crate::view::View;
+use crate::view::*;
+use crate::state::State;
 
 struct Polygon {
     points: Vec<[f64; 4]>,
@@ -24,8 +25,7 @@ impl Polygon {
 
 pub trait FigureImpl {
     fn transform(&mut self, matrix: [[f64; 4]; 4]);
-    fn draw(&self, canvas: &mut CairoCanvas, pos: (i32, i32),
-            hide_lines: bool, carcass: bool, filling: bool, projection: View);
+    fn draw(&self, canvas: &mut CairoCanvas, pos: (i32, i32), state: &State);
 }
 
 pub struct Figure {
@@ -218,8 +218,7 @@ fn maximum(a: f64, b: f64) -> f64{
     }
 }
 
-fn draw_tile(canvas: &mut CairoCanvas, pos: (i32, i32), polygon: &Polygon,
-             hide_lines: bool, carcass: bool, filling: bool) {
+fn draw_tile(canvas: &mut CairoCanvas, pos: (i32, i32), polygon: &Polygon, state: &State) {
     let mut pts: Vec<Point> = Vec::new();
 
     let normal = cross_product(
@@ -232,7 +231,7 @@ fn draw_tile(canvas: &mut CairoCanvas, pos: (i32, i32), polygon: &Polygon,
     println!("Normal {:?}", normal[2]);
     println!("angle {:?}", angle_normal_scene);
 
-    if hide_lines && angle_normal_scene <= 0.0 {
+    if state.hide_lines && angle_normal_scene <= 0.0 {
         return;
     }
 
@@ -242,14 +241,17 @@ fn draw_tile(canvas: &mut CairoCanvas, pos: (i32, i32), polygon: &Polygon,
                             point[1] as i32 + pos.1));
     }
 
-    if filling {
-        let alpha = maximum(0.0, angle_normal_scene * 2.0 / 3.0);
-        //println!("Alpha {}", alpha);
-        canvas.set_draw_color_alpha(Color::dark_green(), maximum(0.0, 1.0 - alpha));
-        canvas.fill_polygon(&pts);
+    match state.drawing_method  {
+        DrawingMethod::Fill => {
+            let alpha = maximum(0.0, angle_normal_scene * 2.0 / 3.0);
+            //println!("Alpha {}", alpha);
+            canvas.set_draw_color_alpha(Color::dark_green(), maximum(0.0, 1.0 - alpha));
+            canvas.fill_polygon(&pts);
+        }
+        _ => {}
     }
 
-    if carcass {
+    if state.carcass {
         canvas.set_draw_color(Color::black());
         canvas.draw_polygon(&pts);
     }
@@ -264,28 +266,12 @@ impl FigureImpl for Figure {
         }
     }
 
-    fn draw(&self, canvas: &mut CairoCanvas, pos: (i32, i32),
-            hide_lines: bool, carcass: bool, filling: bool, projection: View) {
+    fn draw(&self, canvas: &mut CairoCanvas, pos: (i32, i32), state: &State) {
         canvas.set_draw_color(Color::new(0, 0, 0));
 
-        match projection {
-            View::Isometric => {
-                for polygon in &self.polygons {
-                    draw_tile(canvas, pos, &polygon, hide_lines, carcass, filling);
-                }
-                //draw_tile(canvas, pos, &self.polygons[0], hide_lines, carcass, filling);
-            },
-            View::Front => {
-                draw_tile(canvas, pos, &self.polygons[0], hide_lines, carcass, filling);
-            },
-            View::Above => {
-                draw_tile(canvas, pos, &self.polygons[2], hide_lines, carcass, filling);
-            },
-            View::Side => {
-                draw_tile(canvas, pos, &self.polygons[4], hide_lines, carcass, filling);
-            }
+        for polygon in &self.polygons {
+            draw_tile(canvas, pos, &polygon, &state);
         }
-
 
     }
 }
