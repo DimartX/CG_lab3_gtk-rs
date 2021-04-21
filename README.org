@@ -29,3 +29,6 @@ cargo run
 ** Как это выглядит сейчас (в i3wm):
 
 [[./resources/lighting_cracked.png]]
+
+** Благодарность
+Спасибо [[https://github.com/QElderDelta][QElderDelta]] за советы и предоставление его образца работы, спасибо [[https://github.com/Qwerty-igtm][Qwerty-igtm]] за помощь с созданием интерфейса в Glade.
