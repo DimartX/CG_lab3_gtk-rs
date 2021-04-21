@@ -18,7 +18,6 @@ pub fn handle_draw(canvas: &mut CairoCanvas, state: &Ref<State>) {
 
     let coefficient = min(width, height) as f64 / 600.0;
 
-    let mut cone: Figure = Figure::new_truncated_cone(state.approx as i32, 1.0, 2.0, 1.0);
 
     let mut cone_transformation =
         TransformMatrix::new()
@@ -67,9 +66,24 @@ pub fn handle_draw(canvas: &mut CairoCanvas, state: &Ref<State>) {
     cone_transformation = cone_transformation
         .move_by_vector([state.move_x, state.move_y, state.move_z, 1.0])
         .zoom(coefficient);
+
     axes_transformation = axes_transformation
         .zoom(40.0 * coefficient);
 
+    let mut lighting_pos = [
+        state.lighting_pos_x,
+        state.lighting_pos_y,
+        state.lighting_pos_z,
+        1.0,
+    ];
+    lighting_pos = crate::transformations::mult_matrix_on_transform(
+        &vec![lighting_pos],
+        axes_transformation.mtx
+    )[0];
+
+
+    let mut cone: Figure =
+        Figure::new_truncated_cone(state.approx as i32, 1.0, 2.0, 1.0, lighting_pos);
     cone.transform(cone_transformation.mtx);
     cone.draw(canvas, ((width / 2), (height / 2)), &state);
 

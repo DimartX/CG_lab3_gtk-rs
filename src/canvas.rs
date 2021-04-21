@@ -1,10 +1,12 @@
 use crate::color::Color;
 use crate::point::Point;
+use std::cmp::min;
 
 // A generic canvas trait
 pub trait Canvas {
     fn set_draw_color(&mut self, color: Color);
     fn set_draw_color_alpha(&mut self, color: Color, alpha: f64);
+    fn set_draw_color_rgb(&mut self, r: f64, g: f64, b: f64);
     fn set_line_width(&mut self, width: f64);
     //fn text_size(&self, text: &str) -> Size;
     fn print_text(&mut self, p: &Point, text: &str);
@@ -44,6 +46,20 @@ impl<'a> CairoCanvas<'a> {
                             p.y() as f64 / self.size.1 as f64);
         }
     }
+
+
+    pub fn draw_filled_circle(&mut self, point: &Point, radius: f64) {
+        let width = self.size.0 as f64;
+        let height = self.size.1 as f64;
+        let x = point.x() as f64 / width;
+        let y = point.y() as f64 / height;
+        let coeff = min(self.size.0, self.size.1) as f64 / 600.0;
+        self.cr.arc(x, y, radius * coeff / 600.0,
+                    0.0,
+                    2.0 * std::f64::consts::PI);
+        self.cr.fill();
+        self.cr.stroke();
+    }
 }
 
 impl<'a> Canvas for CairoCanvas<'a> {
@@ -51,6 +67,10 @@ impl<'a> Canvas for CairoCanvas<'a> {
         self.cr.set_source_rgb(color.r() as f64 / 255.0,
                                color.g() as f64 / 255.0,
                                color.b() as f64 / 255.0)
+    }
+
+    fn set_draw_color_rgb(&mut self, r: f64, g: f64, b: f64) {
+        self.cr.set_source_rgb(r, g, b);
     }
 
     fn set_draw_color_alpha(&mut self, color: Color, alpha: f64) {

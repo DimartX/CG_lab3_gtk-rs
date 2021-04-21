@@ -30,82 +30,28 @@ pub trait FigureImpl {
 
 pub struct Figure {
     polygons: Vec<Polygon>,
+    lighting_pos: [f64; 4],
 }
 
 impl Figure {
-    pub fn new_cube() -> Self {
-        Self {
-            polygons: vec![
-                // front
-                Polygon::from(
-                    vec![
-                        [0.0, 0.0, 0.0, 1.0],
-                        [1.0, 0.0, 0.0, 1.0],
-                        [1.0, 1.0, 0.0, 1.0],
-                        [0.0, 1.0, 0.0, 1.0],
-                    ]
-                ),
-                // back
-                Polygon::from(
-                    vec![
-                        [0.0, 0.0, 1.0, 1.0],
-                        [0.0, 1.0, 1.0, 1.0],
-                        [1.0, 1.0, 1.0, 1.0],
-                        [1.0, 0.0, 1.0, 1.0],
-                    ]
-                ),
-                // above
-                Polygon::from(
-                    vec![
-                        [0.0, 0.0, 0.0, 1.0],
-                        [0.0, 0.0, 1.0, 1.0],
-                        [1.0, 0.0, 1.0, 1.0],
-                        [1.0, 0.0, 0.0, 1.0],
-                    ]
-                ),
-                // bottom
-                Polygon::from(
-                    vec![
-                        [0.0, 1.0, 0.0, 1.0],
-                        [1.0, 1.0, 0.0, 1.0],
-                        [1.0, 1.0, 1.0, 1.0],
-                        [0.0, 1.0, 1.0, 1.0],
-                    ]
-                ),
-                // right
-                Polygon::from(
-                    vec![
-                        [1.0, 0.0, 0.0, 1.0],
-                        [1.0, 0.0, 1.0, 1.0],
-                        [1.0, 1.0, 1.0, 1.0],
-                        [1.0, 1.0, 0.0, 1.0],
-                    ]
-                ),
-                // left
-                Polygon::from(
-                    vec![
-                        [0.0, 0.0, 0.0, 1.0],
-                        [0.0, 1.0, 0.0, 1.0],
-                        [0.0, 1.0, 1.0, 1.0],
-                        [0.0, 0.0, 1.0, 1.0],
-                    ]
-                ),
-            ],
-        }
-    }
-
-    pub fn new_truncated_cone(approx: i32, radius: f64, length: f64, real_length: f64) -> Self {
+    pub fn new_truncated_cone(approx: i32, radius: f64, length: f64, real_length: f64,
+                              lighting_pos: [f64; 4],) -> Self {
         let mut polygons: Vec<Polygon> = Vec::new();
 
         let up_radius = radius;
         let down_radius = radius * length / real_length;
 
         let real_length = -real_length;
-        let mut up_polygon = Polygon::from(vec![[up_radius, real_length, 0.0, 1.0]]);
-        let mut down_polygon = Polygon::from(vec![[down_radius, 0.0, 0.0, 1.0]]);
+
+        let top = real_length / 2.0;
+        let bottom = -real_length / 2.0;
+
+        let mut up_polygon = Polygon::from(vec![[up_radius, top, 0.0, 1.0]]);
+        let mut down_polygon = Polygon::from(vec![[down_radius, bottom, 0.0, 1.0]]);
 
         let step: f64 = 2.0 * std::f64::consts::PI / (approx as f64);
         let mut phi: f64 = 0.0;
+
 
         for _ in 0..approx as usize {
             phi += step;
@@ -116,8 +62,8 @@ impl Figure {
             let x_down = down_radius * phi.cos();
             let y_down = down_radius * phi.sin();
 
-            let point_up = [x_up, real_length, y_up, 1.0];
-            let point_down = [x_down, 0.0, y_down, 1.0];
+            let point_up = [x_up, top, y_up, 1.0];
+            let point_down = [x_down, bottom, y_down, 1.0];
 
             polygons.push(Polygon::from(vec![
                 point_up,
@@ -136,7 +82,14 @@ impl Figure {
         polygons.push(down_polygon);
 
         Self {
-            polygons: polygons
+            polygons: polygons,
+            lighting_pos:     [
+                lighting_pos[0],
+                lighting_pos[1],
+                lighting_pos[2],
+                1.0,
+            ],
+
         }
     }
 
@@ -161,8 +114,8 @@ impl Figure {
                         [0.0, 0.0, 1.0, 1.0],
                     ]
                 ),
-
             ],
+            lighting_pos: [0.0; 4],
         }
     }
 
@@ -194,7 +147,7 @@ fn dot_product(lhs: [f64; 4], rhs: [f64; 4]) -> f64 {
     lhs[0] * rhs[0] + lhs[1] * rhs[1] + lhs[2] * rhs[2]
 }
 
-fn angle_vectors(lhs: [f64; 4], rhs: [f64; 4]) -> f64 {
+fn cos_vectors(lhs: [f64; 4], rhs: [f64; 4]) -> f64 {
     dot_product(lhs, rhs) /
         (dot_product(lhs, lhs).sqrt() * dot_product(rhs, rhs).sqrt())
 }
@@ -218,7 +171,56 @@ fn maximum(a: f64, b: f64) -> f64{
     }
 }
 
-fn draw_tile(canvas: &mut CairoCanvas, pos: (i32, i32), polygon: &Polygon, state: &State) {
+fn ambient_component(state: &State) -> [f64; 3] {
+    [
+        state.lighting_ia_r * state.material_ka_r,
+        state.lighting_ia_g * state.material_ka_g,
+        state.lighting_ia_b * state.material_ka_b,
+    ]
+}
+
+fn diffuse_component(state: &State, vector_l: [f64; 4], normal: [f64; 4]) -> [f64; 3] {
+    [
+        state.lighting_il_r * state.material_kd_r *
+            maximum(dot_product(vector_l, normal), 0.0),
+        state.lighting_il_g * state.material_kd_g *
+            maximum(dot_product(vector_l, normal), 0.0),
+        state.lighting_il_b * state.material_kd_b *
+            maximum(dot_product(vector_l, normal), 0.0),
+    ]
+}
+
+fn specular_component(state: &State, vector_r: [f64; 4], vector_s: [f64; 4]) -> [f64; 3] {
+    [
+        state.lighting_il_r * state.material_ks_r *
+            maximum(cos_vectors(vector_r, vector_s), 0.0).powf(state.material_p),
+        state.lighting_il_g * state.material_ks_g *
+            maximum(cos_vectors(vector_r, vector_s), 0.0).powf(state.material_p),
+        state.lighting_il_b * state.material_ks_b *
+            maximum(cos_vectors(vector_r, vector_s), 0.0).powf(state.material_p),
+    ]
+}
+
+fn mult(vector: [f64; 4], num: f64) -> [f64; 4] {
+    [
+        vector[0] * num,
+        vector[1] * num,
+        vector[2] * num,
+        1.0,
+    ]
+}
+
+fn minus(lhs: [f64; 4], rhs: [f64; 4]) -> [f64; 4] {
+    [
+        lhs[0] - rhs[0],
+        lhs[1] - rhs[1],
+        lhs[2] - rhs[2],
+        1.0,
+    ]
+}
+
+fn draw_tile(canvas: &mut CairoCanvas, pos: (i32, i32), polygon: &Polygon, state: &State,
+             lighting_pos: [f64; 4]) {
     let mut pts: Vec<Point> = Vec::new();
 
     let normal = cross_product(
@@ -227,25 +229,62 @@ fn draw_tile(canvas: &mut CairoCanvas, pos: (i32, i32), polygon: &Polygon, state
         polygon.points[2],
     );
 
-    let angle_normal_scene = angle_vectors(norm(normal), [0.0, 0.0, -1.0, 0.0]);
-    println!("Normal {:?}", normal[2]);
-    println!("angle {:?}", angle_normal_scene);
+    let my_eye = [0.0, 0.0, -1.0, 1.0];
+
+    let angle_normal_scene = cos_vectors(norm(normal), my_eye);
 
     if state.hide_lines && angle_normal_scene <= 0.0 {
         return;
     }
 
+    let mut center = [0.0; 4];
     for point in &polygon.points {
         //println!("Point x = {}, y = {}, z = {}", point[0], point[1], point[2]);
         pts.push(Point::new(point[0] as i32 + pos.0,
                             point[1] as i32 + pos.1));
+        for i in 0..3 {
+            center[i] += point[i];
+        }
     }
+    for i in 0..3 {
+        center[i] /= polygon.points.len() as f64;
+    }
+
+    let mut vector_l = lighting_pos;
+    for i in 0..3 {
+        vector_l[i] -= center[i];
+    }
+    let dist = dot_product(vector_l, vector_l).sqrt();
+
+    let vector_r = norm(minus(vector_l, mult(normal, 2.0 * dot_product(normal, vector_l))));
+
+    vector_l = norm(vector_l);
 
     match state.drawing_method  {
         DrawingMethod::Fill => {
             let alpha = maximum(0.0, angle_normal_scene * 2.0 / 3.0);
             //println!("Alpha {}", alpha);
             canvas.set_draw_color_alpha(Color::dark_green(), maximum(0.0, 1.0 - alpha));
+            canvas.fill_polygon(&pts);
+        }
+        DrawingMethod::FlatShading => {
+            let amb = ambient_component(state);
+            let dif = diffuse_component(state, vector_l, norm(normal));
+            let spec = specular_component(state, vector_r, my_eye);
+
+
+
+            let mut result = [0.0; 3];
+            for i in 0..3 {
+                result[i] = amb[i] + (dif[i] + spec[i]) / (state.md * dist + state.mk);
+            }
+
+            //println!("Colors {:?}", result);
+            canvas.set_draw_color_rgb(
+                result[0] * state.material_color_r / 255.0,
+                result[1] * state.material_color_g / 255.0,
+                result[2] * state.material_color_b / 255.0,
+            );
             canvas.fill_polygon(&pts);
         }
         _ => {}
@@ -257,8 +296,8 @@ fn draw_tile(canvas: &mut CairoCanvas, pos: (i32, i32), polygon: &Polygon, state
     }
 }
 
-
 impl FigureImpl for Figure {
+    // transform all that stuff
     fn transform(&mut self, matrix: [[f64; 4]; 4]) {
         for polygon in &mut self.polygons {
             polygon.points = mult_matrix_on_transform(&polygon.points, matrix);
@@ -270,8 +309,13 @@ impl FigureImpl for Figure {
         canvas.set_draw_color(Color::new(0, 0, 0));
 
         for polygon in &self.polygons {
-            draw_tile(canvas, pos, &polygon, &state);
+            draw_tile(canvas, pos, &polygon, &state, self.lighting_pos);
         }
 
+        canvas.set_draw_color(Color::red());
+        canvas.draw_filled_circle(&Point::new(
+            self.lighting_pos[0] as i32 + pos.0,
+            self.lighting_pos[1] as i32 + pos.1,
+        ), 5.0);
     }
 }
